@@ -1,11 +1,9 @@
 #include <iostream>
-#include <string>
-#include <map>
 #include <vector>
+#include <map>
+#include <cmath>
 #include <iomanip>
 #include <sstream>
-#include <cmath>  // Added this line for floor function
-
 using namespace std;
 
 struct Investment {
@@ -22,119 +20,91 @@ struct ExchangeRate {
     double rate;
 };
 
-double convertCurrency(double amount, const string& from, const string& to, const vector<ExchangeRate>& rates) {
+struct Query {
+    string type;
+    string name;
+    string target_currency;
+};
+
+double convert_currency(double amount, const string& from, const string& to,
+    const vector<ExchangeRate>& rates) {
     if (from == to) return amount;
 
-    // Check for direct conversion
     for (const auto& rate : rates) {
-        if (rate.from == from && rate.to == to) {
-            return amount * rate.rate;
-        }
-        if (rate.from == to && rate.to == from) {
-            return amount / rate.rate;
+        if (rate.from == from && rate.to == to) return amount * rate.rate;
+        if (rate.from == to && rate.to == from) return amount / rate.rate;
+    }
+    return 0;
+}
+
+string format_amount(double amount) {
+    ostringstream oss;
+    if (amount == floor(amount)) {
+        oss << static_cast<long long>(amount);
+    }
+    else {
+        oss << fixed << setprecision(2) << amount;
+        string s = oss.str();
+        s.erase(s.find_last_not_of('0') + 1, string::npos);
+        if (s.back() == '.') s.pop_back();
+        return s;
+    }
+    return oss.str();
+}
+
+vector<Investment> read_investments() {
+    int n;
+    cin >> n;
+    vector<Investment> investments(n);
+    for (auto& inv : investments) {
+        cin >> inv.stock >> inv.person >> inv.currency >> inv.shares >> inv.price;
+    }
+    return investments;
+}
+
+vector<ExchangeRate> read_exchange_rates() {
+    int m;
+    cin >> m;
+    vector<ExchangeRate> rates(m);
+    for (auto& rate : rates) {
+        cin >> rate.from >> rate.to >> rate.rate;
+    }
+    return rates;
+}
+
+vector<Query> read_queries() {
+    int k;
+    cin >> k;
+    vector<Query> queries(k);
+    for (auto& q : queries) {
+        cin >> q.type >> q.name >> q.target_currency;
+    }
+    return queries;
+}
+
+double calculate_total(const Query& query, const vector<Investment>& investments,
+    const vector<ExchangeRate>& rates) {
+    double total = 0;
+    for (const auto& inv : investments) {
+        if ((query.type == "PERSON" && inv.person == query.name) ||
+            (query.type == "STOCK" && inv.stock == query.name)) {
+            total += convert_currency(inv.shares * inv.price,
+                inv.currency,
+                query.target_currency,
+                rates);
         }
     }
-
-    // If no direct conversion, try to find a path through CNY (assuming CNY is the base currency)
-    double toCNY = amount;
-    if (from != "CNY") {
-        bool found = false;
-        for (const auto& rate : rates) {
-            if (rate.from == from && rate.to == "CNY") {
-                toCNY = amount * rate.rate;
-                found = true;
-                break;
-            }
-            if (rate.from == "CNY" && rate.to == from) {
-                toCNY = amount / rate.rate;
-                found = true;
-                break;
-            }
-        }
-        if (!found) return 0; // No conversion path found
-    }
-
-    if (to == "CNY") return toCNY;
-
-    for (const auto& rate : rates) {
-        if (rate.from == "CNY" && rate.to == to) {
-            return toCNY * rate.rate;
-        }
-        if (rate.from == to && rate.to == "CNY") {
-            return toCNY / rate.rate;
-        }
-    }
-
-    return 0; // No conversion path found
+    return total;
 }
 
 int main() {
-    int n, m, k;
-    vector<Investment> investments;
-    vector<ExchangeRate> exchangeRates;
+    auto investments = read_investments();
+    auto rates = read_exchange_rates();
+    auto queries = read_queries();
 
-    // Read investments
-    cin >> n;
-    for (int i = 0; i < n; ++i) {
-        Investment inv;
-        cin >> inv.stock >> inv.person >> inv.currency >> inv.shares >> inv.price;
-        investments.push_back(inv);
-    }
-
-    // Read exchange rates
-    cin >> m;
-    for (int i = 0; i < m; ++i) {
-        ExchangeRate rate;
-        cin >> rate.from >> rate.to >> rate.rate;
-        exchangeRates.push_back(rate);
-    }
-
-    // Read queries
-    cin >> k;
-    vector<pair<string, string>> queries; // type+name, target currency
-    for (int i = 0; i < k; ++i) {
-        string type, name, currency;
-        cin >> type >> name >> currency;
-        queries.emplace_back(type + " " + name, currency);
-    }
-
-    // Process queries
     for (const auto& query : queries) {
-        string type_name = query.first;
-        string targetCurrency = query.second;
-
-        double total = 0;
-
-        size_t space_pos = type_name.find(' ');
-        string type = type_name.substr(0, space_pos);
-        string name = type_name.substr(space_pos + 1);
-
-        for (const auto& inv : investments) {
-            if ((type == "PERSON" && inv.person == name) ||
-                (type == "STOCK" && inv.stock == name)) {
-                double value = inv.shares * inv.price;
-                double converted = convertCurrency(value, inv.currency, targetCurrency, exchangeRates);
-                total += converted;
-            }
-        }
-
-        // Format output to avoid scientific notation and unnecessary decimals
-        ostringstream oss;
-        if (total == floor(total)) {
-            oss << static_cast<long long>(total);
-        }
-        else {
-            oss << fixed << setprecision(2) << total;
-            string s = oss.str();
-            // Remove trailing zeros and possible . if no decimals left
-            s.erase(s.find_last_not_of('0') + 1, string::npos);
-            if (s.back() == '.') {
-                s.pop_back();
-            }
-            oss.str("");
-            oss << s;
-        }
-        cout << oss.str() << endl;
+        double total = calculate_total(query, investments, rates);
+        cout << format_amount(total) << endl;
     }
 
     return 0;
